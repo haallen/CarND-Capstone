@@ -5,6 +5,7 @@ from geometry_msgs.msg import PoseStamped
 from styx_msgs.msg import Lane, Waypoint
 
 import math
+from itertools import cycle, islice
 
 '''
 This node will publish waypoints from the car's current position to some `x` distance ahead.
@@ -32,21 +33,26 @@ class WaypointUpdater(object):
         rospy.Subscriber('/base_waypoints', Lane, self.waypoints_cb)
 
         # TODO: Add a subscriber for /traffic_waypoint and /obstacle_waypoint below
-
+	#rospy.Subscriber('/traffic_waypoint', ,self.traffic_cb)
+	#rospy.Subscriber('/obstacle_waypoint', ,self.obstacle_cb)
 
         self.final_waypoints_pub = rospy.Publisher('final_waypoints', Lane, queue_size=1)
 
         # TODO: Add other member variables you need below
-
+	self.pose = None
+	self.waypoints = None
+	self.prev_wp_idx = None
         rospy.spin()
 
     def pose_cb(self, msg):
         # TODO: Implement
-        pass
+	self.pose = msg.pose
+	self.calc_waypoints()
 
     def waypoints_cb(self, waypoints):
         # TODO: Implement
-        pass
+	self.waypoints = waypoints.waypoints
+	self.calc_waypoints()
 
     def traffic_cb(self, msg):
         # TODO: Callback for /traffic_waypoint message. Implement
@@ -70,6 +76,32 @@ class WaypointUpdater(object):
             wp1 = i
         return dist
 
+    def calc_waypoints(self):
+        if self.waypoints is None or self.pose is None:
+            return
+
+	car_x = self.pose.position.x
+	car_y = self.pose.position.y
+	
+	closest_dist = -1
+	closest_idx = -1
+	for idx in range(len(self.waypoints)):
+	    wp = self.waypoints[idx]
+	    dist2car = math.sqrt((car_x-wp.pose.pose.position.x)**2 + (car_y-wp.pose.pose.position.y)**2)
+	    if closest_dist < 0:
+		closest_dist = dist2car
+		closest_idx = idx
+	    elif dist2car<closest_dist:
+		closest_dist = dist2car
+		closest_idx = idx
+
+	next_waypoints = list(islice(cycle(self.waypoints),closest_idx,closest_idx+LOOKAHEAD_WPS-1))
+
+    	waypoints2publish = Lane()
+   	waypoints2publish.waypoints = next_waypoints
+	rospy.loginfo("publishing next waypoints!!")
+    	self.final_waypoints_pub.publish = waypoints2publish
+    
 
 if __name__ == '__main__':
     try:
