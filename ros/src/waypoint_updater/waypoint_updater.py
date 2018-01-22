@@ -5,6 +5,7 @@ from geometry_msgs.msg import PoseStamped
 from styx_msgs.msg import Lane, Waypoint
 
 import math
+import tf
 from itertools import cycle, islice
 
 '''
@@ -95,12 +96,29 @@ class WaypointUpdater(object):
 		closest_dist = dist2car
 		closest_idx = idx
 
-	next_waypoints = list(islice(cycle(self.waypoints),closest_idx,closest_idx+LOOKAHEAD_WPS-1))
+		quaternion = (self.pose.orientation.x,
+				self.pose.orientation.y,
+				self.pose.orientation.z,
+				self.pose.orientation.w)
 
+		euler = tf.transformations.euler_from_quaternion(quaternion)
+		yaw = euler[2]
+		
+		temp = (wp.pose.pose.position.x-car_x)*math.cos(yaw) + (wp.pose.pose.position.y-car_y)*math.sin(yaw)
+		if temp < 0.0:
+			closest_idx +=1
+	closest_idx += 2
+	next_waypoints = list(islice(cycle(self.waypoints),closest_idx,closest_idx+LOOKAHEAD_WPS-1))
+	rospy.loginfo("car's current pose %s %s"%(car_x,car_y))
+	rospy.loginfo("nearest waypoint %s"%next_waypoints[0])
+
+	rospy.loginfo("closest_idx: %s"%closest_idx)
     	waypoints2publish = Lane()
+	waypoints2publish.header.frame_id = '/world'
+	waypoints2publish.header.stamp = rospy.Time(0)
    	waypoints2publish.waypoints = next_waypoints
 	rospy.loginfo("publishing next waypoints!!")
-    	self.final_waypoints_pub.publish = waypoints2publish
+    	self.final_waypoints_pub.publish(waypoints2publish)
     
 
 if __name__ == '__main__':
