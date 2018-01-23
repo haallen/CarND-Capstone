@@ -24,7 +24,7 @@ class Controller(object):
 
 	self.pid_throttle = PID(0.5,0.0005,0.05,mn=self.decel_limit,mx=self.accel_limit)
 	self.yaw_control = YawController(self.wheel_base, self.steer_ratio, self.min_speed, self.max_lat_accel, self.max_steer_angle)
-	#self.lowpass = LowPassFilter(1,1)
+	
 	self.prev_time = None
 
     def control(self,proposed_linear_velocity, proposed_angular_velocity, current_linear_velocity,dbw_enabled, dt):

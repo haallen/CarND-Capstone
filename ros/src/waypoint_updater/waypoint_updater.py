@@ -10,16 +10,12 @@ from itertools import cycle, islice
 
 '''
 This node will publish waypoints from the car's current position to some `x` distance ahead.
-
 As mentioned in the doc, you should ideally first implement a version which does not care
 about traffic lights or obstacles.
-
 Once you have created dbw_node, you will update this node to use the status of traffic lights too.
-
 Please note that our simulator also provides the exact location of traffic lights and their
 current status in `/vehicle/traffic_lights` message. You can use this message to build this node
 as well as to verify your TL classifier.
-
 TODO (for Yousuf and Aaron): Stopline location for each traffic light.
 '''
 
@@ -42,9 +38,24 @@ class WaypointUpdater(object):
         # TODO: Add other member variables you need below
 	self.pose = None
 	self.waypoints = None
-	self.prev_wp_idx = None
-        rospy.spin()
+	self.wp_idx = None
+        #rospy.spin()
+	self.loop()
+		
+    def loop(self):
+	rate = rospy.Rate(10)
+	while not rospy.is_shutdown():	
+		if self.waypoints and self.wp_idx:
+			next_waypoints = list(islice(cycle(self.waypoints),self.wp_idx,self.wp_idx+LOOKAHEAD_WPS-1))
 
+			rospy.loginfo("closest_idx: %s"%self.wp_idx)
+		    	waypoints2publish = Lane()
+			waypoints2publish.header.frame_id = '/world'
+			waypoints2publish.header.stamp = rospy.Time(0)
+		   	waypoints2publish.waypoints = next_waypoints
+			rospy.loginfo("publishing next waypoints!!")
+		    	self.final_waypoints_pub.publish(waypoints2publish)
+		rate.sleep()
     def pose_cb(self, msg):
         # TODO: Implement
 	self.pose = msg.pose
@@ -77,48 +88,55 @@ class WaypointUpdater(object):
             wp1 = i
         return dist
 
-    def calc_waypoints(self):
-        if self.waypoints is None or self.pose is None:
-            return
+    def find_nearest_waypoint(self):
+	closest_dist = 1e6
+	closest_idx = 0
 
 	car_x = self.pose.position.x
 	car_y = self.pose.position.y
+
+	start_idx = 0
+	stop_idx = len(self.waypoints)
 	
-	closest_dist = -1
-	closest_idx = -1
-	for idx in range(len(self.waypoints)):
-	    wp = self.waypoints[idx]
-	    dist2car = math.sqrt((car_x-wp.pose.pose.position.x)**2 + (car_y-wp.pose.pose.position.y)**2)
-	    if closest_dist < 0:
-		closest_dist = dist2car
-		closest_idx = idx
-	    elif dist2car<closest_dist:
-		closest_dist = dist2car
-		closest_idx = idx
+	if self.wp_idx: 
+		start_idx = max(self.wp_idx-50,0)
+		stop_idx = min(self.wp_idx+50, len(self.waypoints))
 
-		quaternion = (self.pose.orientation.x,
-				self.pose.orientation.y,
-				self.pose.orientation.z,
-				self.pose.orientation.w)
+	for idx in range(start_idx, stop_idx):
+		wp = self.waypoints[idx]
+		dist2car = math.sqrt((car_x-wp.pose.pose.position.x)**2 + (car_y-wp.pose.pose.position.y)**2)
 
-		euler = tf.transformations.euler_from_quaternion(quaternion)
-		yaw = euler[2]
-		
-		temp = (wp.pose.pose.position.x-car_x)*math.cos(yaw) + (wp.pose.pose.position.y-car_y)*math.sin(yaw)
-		if temp < 0.0:
-			closest_idx +=1
-	closest_idx += 2
-	next_waypoints = list(islice(cycle(self.waypoints),closest_idx,closest_idx+LOOKAHEAD_WPS-1))
-	rospy.loginfo("car's current pose %s %s"%(car_x,car_y))
-	rospy.loginfo("nearest waypoint %s"%next_waypoints[0])
+	    	if dist2car<closest_dist:
+			closest_dist = dist2car
+			closest_idx = idx
 
-	rospy.loginfo("closest_idx: %s"%closest_idx)
-    	waypoints2publish = Lane()
-	waypoints2publish.header.frame_id = '/world'
-	waypoints2publish.header.stamp = rospy.Time(0)
-   	waypoints2publish.waypoints = next_waypoints
-	rospy.loginfo("publishing next waypoints!!")
-    	self.final_waypoints_pub.publish(waypoints2publish)
+	return closest_idx
+
+    def calc_yaw(self):
+	quaternion = (self.pose.orientation.x,
+			self.pose.orientation.y,
+			self.pose.orientation.z,
+			self.pose.orientation.w)
+	euler = tf.transformations.euler_from_quaternion(quaternion)
+	return euler[2]
+
+    def calc_waypoints(self):
+
+        if self.waypoints is None or self.pose is None:
+            return
+
+	closest_idx = self.find_nearest_waypoint()
+	yaw = self.calc_yaw()
+
+	wp = self.waypoints[closest_idx]
+
+	car_x = self.pose.position.x
+	car_y = self.pose.position.y
+
+	wp_rel_car = (wp.pose.pose.position.x-car_x)*math.cos(yaw) + (wp.pose.pose.position.y-car_y)*math.sin(yaw)
+	if wp_rel_car < 0.0:
+		closest_idx +=1
+	self.wp_idx = closest_idx
     
 
 if __name__ == '__main__':
@@ -126,3 +144,4 @@ if __name__ == '__main__':
         WaypointUpdater()
     except rospy.ROSInterruptException:
         rospy.logerr('Could not start waypoint updater node.')
+
